@@ -23,6 +23,7 @@ const MODELS = {
 // Set max execution time to 10 minutes for heavy processing
 export const maxDuration = 600;
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 // --- Helper Functions ---
 
