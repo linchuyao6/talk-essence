@@ -13,8 +13,12 @@ Talk Essence 是一个现代化的播客内容提取与总结工具。它能够�
 
 ## ✨ 特性 (Features)
 
+*   **🪐 小宇宙 (Xiaoyuzhou) 深度支持**: 专为中文播客平台“小宇宙”优化，完美解析单集链接，自动获取元数据。
 *   **⚡️ 极速转录**: 集成 Groq 的 `whisper-large-v3-turbo` 模型，实现高并发、低延迟的音频转文字处理。
 *   **🧠 深度分析**: 利用 `llama-3.3-70b` 模型进行上下文理解，输出有逻辑的知识拆解与结构化复盘。
+*   **🛠️ 资源工具箱 (Resource Toolbox)**:
+    *   **音频下载**: 支持直接提取并下载高清源音频文件。
+    *   **NotebookLM 接连**: 提供优化后的完整转录文本，可一键导入 Google NotebookLM 进行二次知识库构建。
 *   **🎨 极简美学**: 采用 Warm Minimalism (暖调极简) 设计语言，提供专注、舒适的阅读与沉浸体验。
 *   **📝 Markdown 原生**: 生成内容完全标准 Markdown 格式，支持一键复制代码或导出文件，无缝对接 Notion/Obsidian 等知识库。
 *   **🐳 容器化架构**: 基于 Docker 构建，支持 Render/Zeabur/Railway 等云平台的一键部署与自动扩容。
