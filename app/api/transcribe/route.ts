@@ -77,22 +77,44 @@ async function downloadAudio(url: string): Promise<{ buffer: Buffer; extension: 
   }
 }
 
-// Low-level single file transcription
-async function transcribeSingleFile(filePath: string, apiKey: string): Promise<string> {
-  // Groq API expects a File-like object or ReadStream. 
-  // For fs.createReadStream, Groq SDK handles it automatically in Node.
+// Low-level single file transcription with retry logic
+async function transcribeSingleFile(filePath: string, apiKey: string, maxRetries = 3): Promise<string> {
   console.log('Transcribing chunk:', path.basename(filePath));
 
   const groq = new Groq({ apiKey });
 
-  const stream = fs.createReadStream(filePath);
-  const transcription = await groq.audio.transcriptions.create({
-    file: stream,
-    model: 'whisper-large-v3-turbo',
-    language: 'zh',
-    response_format: 'text',
-  });
-  return transcription as unknown as string;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const stream = fs.createReadStream(filePath);
+      const transcription = await groq.audio.transcriptions.create({
+        file: stream,
+        model: 'whisper-large-v3-turbo',
+        language: 'zh',
+        response_format: 'text',
+      });
+      return transcription as unknown as string;
+    } catch (error: any) {
+      const isNetworkError =
+        error?.cause?.code === 'ECONNRESET' ||
+        error?.cause?.code === 'ETIMEDOUT' ||
+        error?.cause?.code === 'ENOTFOUND' ||
+        error?.message?.includes('ECONNRESET') ||
+        error?.message?.includes('fetch failed');
+
+      if (isNetworkError && attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+        console.log(`Network error on attempt ${attempt}, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      // If not a network error or max retries reached, throw
+      console.error(`Transcription failed after ${attempt} attempt(s):`, error?.message || error);
+      throw error;
+    }
+  }
+
+  throw new Error('Max retries reached for transcription');
 }
 
 // Robust Chunking Transcriber
