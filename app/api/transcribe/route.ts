@@ -265,13 +265,21 @@ async function summarizeTranscript(
 ...
 
 ---
-${footerInstruction}`;
+const footerInstruction = `
+## 🧠 Amy 的碎碎念(Amy's Broken Thoughts)
+    (这部分是 ** 你的灵魂 **。占 10 - 15 %。)
+    *   ** 不要总结全文 **。那是上面的事。
+*   ** 不要说教 **。不要说"让我们一起..."、"希望大家..."。
+*   ** 要私人化 **。就像深夜里，你给朋友发的一条长语音。分享你被触动的一个点。
+*   ** 允许脆弱 **。你可以说"其实我听到这里有点难过..."。
+*   ** 结尾要戛然而止 **。** 绝对不要写 ** "我们下期节目再见"、"希望这对你有帮助" 这种客套话。** 停在最有余味的地方 **。
+    `;
 
   const callModel = async (model: string) => {
     return await groq.chat.completions.create({
       messages: [
         { role: 'system', content: sysPrompt },
-        { role: 'user', content: `TRANSCRIPT:\n\n${transcript}` }
+        { role: 'user', content: `TRANSCRIPT: \n\n${ transcript }` }
       ],
       model: model,
       temperature: 0.6,
@@ -282,7 +290,7 @@ ${footerInstruction}`;
   try {
     let response;
     try {
-      console.log(`Attempting summary with PRIMARY model: ${MODELS.PRIMARY}`);
+      console.log(`Attempting summary with PRIMARY model: ${ MODELS.PRIMARY } `);
       response = await callModel(MODELS.PRIMARY);
     } catch (e: any) {
       console.error('Primary model failed:', e);
@@ -295,10 +303,10 @@ ${footerInstruction}`;
         // Notify user about the fallback
         send({
           stage: 'summarizing',
-          message: `主力模型速率受限 (429)，正在切换为备用模型 (8B)... (预计恢复: ${retryTime})`
+          message: `主力模型速率受限(429)，正在切换为备用模型(8B)... (预计恢复: ${ retryTime })`
         });
 
-        console.log(`Switching to FALLBACK model: ${MODELS.FALLBACK}`);
+        console.log(`Switching to FALLBACK model: ${ MODELS.FALLBACK } `);
         response = await callModel(MODELS.FALLBACK);
       } else {
         throw e; // Throw other errors directly
@@ -320,7 +328,7 @@ ${footerInstruction}`;
     if (e?.status === 429) {
       const retryAfterMatch = e.message?.match(/try again in ([\d\w\.]+)/);
       const retryTime = retryAfterMatch ? retryAfterMatch[1] : '一会儿';
-      throw new Error(`今日额度已耗尽，请 ${retryTime} 后重试。`);
+      throw new Error(`今日额度已耗尽，请 ${ retryTime } 后重试。`);
     }
 
     throw e;
@@ -343,7 +351,7 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const send = (data: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        const send = (data: any) => controller.enqueue(encoder.encode(`data: ${ JSON.stringify(data) } \n\n`));
 
         try {
           // 1. Parsing
