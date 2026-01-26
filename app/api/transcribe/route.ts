@@ -47,17 +47,20 @@ async function parseXiaoyuzhouUrl(url: string): Promise<{ audioUrl: string; titl
   }
 }
 
-async function downloadAudio(url: string): Promise<{ buffer: Buffer; extension: string }> {
-  console.log('Downloading audio from:', url);
+
+async function downloadAudioToStream(url: string, tempFilePath: string): Promise<string> {
+  console.log('Downloading audio to stream:', url);
+
   try {
-    const response = await axios.get(url, {
-      responseType: 'arraybuffer',
+    const response = await axios({
+      method: 'get',
+      url: url,
+      responseType: 'stream',
       headers: { 'User-Agent': 'Mozilla/5.0' },
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-      timeout: 60000 // 60s timeout for audio download (it can be large)
+      timeout: 60000 // 60s timeout for connection
     });
 
+    // Determine extension from URL (fallback)
     let extension = '.mp3';
     try {
       const urlPath = new URL(url).pathname;
@@ -66,8 +69,31 @@ async function downloadAudio(url: string): Promise<{ buffer: Buffer; extension: 
       if (urlPath.endsWith('.wav')) extension = '.wav';
     } catch (e) { }
 
-    console.log(`Downloaded ${response.data.length} bytes, ext: ${extension}`);
-    return { buffer: Buffer.from(response.data), extension };
+    // If response headers have content-type, maybe use that? 
+    // For now, URL-based extension is usually good enough for xiaoyuzhou.
+    // We will append the correct extension to the temporary file path later if needed, 
+    // but the caller passed a generic path. Let's return the extension so caller can rename if they want.
+
+    const writer = fs.createWriteStream(tempFilePath);
+
+    return new Promise((resolve, reject) => {
+      response.data.pipe(writer);
+      let error: Error | null = null;
+
+      writer.on('error', err => {
+        error = err;
+        writer.close();
+        reject(err);
+      });
+
+      writer.on('close', () => {
+        if (!error) {
+          console.log('Download complete.');
+          resolve(extension);
+        }
+      });
+    });
+
   } catch (error) {
     console.error('Download failed:', error instanceof Error ? error.message : String(error));
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
@@ -119,17 +145,12 @@ async function transcribeSingleFile(filePath: string, apiKey: string, maxRetries
 
 // Robust Chunking Transcriber
 async function transcribeLargeAudio(
-  buffer: Buffer,
+  inputPath: string,
   originalExt: string,
+  tempDir: string, // Pass tempDir to reuse context
   apiKey: string,
   onProgress: (percent: number) => void
 ): Promise<string> {
-  const sessionId = uuidv4();
-  const tempDir = path.join(os.tmpdir(), `amy-podcast-${sessionId}`);
-  await mkdirAsync(tempDir, { recursive: true });
-
-  const inputPath = path.join(tempDir, `input${originalExt}`);
-  await writeFileAsync(inputPath, buffer);
 
   try {
     // 1. Get Duration
@@ -205,13 +226,8 @@ async function transcribeLargeAudio(
 
     return fullTranscript;
 
-  } finally {
-    // Cleanup
-    try {
-      await rmAsync(tempDir, { recursive: true, force: true });
-    } catch (e) {
-      console.error('Cleanup error:', e);
-    }
+  } catch (e) {
+    throw e; // Let upper level handle cleanup
   }
 }
 
@@ -440,7 +456,10 @@ ${mergedContent}
 }
 
 
+
 export async function POST(request: NextRequest) {
+  let tempDir = '';
+
   try {
     const { url } = await request.json();
     const apiKey = request.headers.get('x-api-key') || process.env.GROQ_API_KEY;
@@ -458,24 +477,41 @@ export async function POST(request: NextRequest) {
         const send = (data: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)} \n\n`));
 
         try {
+          // Prepare temp directory
+          const sessionId = uuidv4();
+          tempDir = path.join(os.tmpdir(), `amy-podcast-${sessionId}`);
+          await mkdirAsync(tempDir, { recursive: true });
+
           // 1. Parsing
           send({ stage: 'parsing', progress: 1 }); // Immediate feedback
           await new Promise(resolve => setTimeout(resolve, 100)); // Flush buffer attempt
           send({ stage: 'parsing', progress: 5 });
           const { audioUrl, title } = await parseXiaoyuzhouUrl(url);
 
-          // 2. Downloading
+          // 2. Downloading (Stream to file)
           send({ stage: 'downloading', progress: 10 });
-          const { buffer, extension } = await downloadAudio(audioUrl);
+          const initialTempPath = path.join(tempDir, 'download_audio_temp');
+          const extension = await downloadAudioToStream(audioUrl, initialTempPath);
+
+          // Rename with correct extension for ffmpeg
+          const inputPath = path.join(tempDir, `input${extension}`);
+          await fs.promises.rename(initialTempPath, inputPath);
+
           send({ stage: 'downloading', progress: 25 });
 
           // 3. Transcribing with REAL Chunk Progress
           send({ stage: 'transcribing', progress: 30 });
 
-          const transcript = await transcribeLargeAudio(buffer, extension, apiKey, (progress) => {
-            // Ensure we are in the 30-80 range
-            send({ stage: 'transcribing', progress });
-          });
+          const transcript = await transcribeLargeAudio(
+            inputPath,
+            extension,
+            tempDir,
+            apiKey,
+            (progress: number) => {
+              // Ensure we are in the 30-80 range
+              send({ stage: 'transcribing', progress });
+            }
+          );
 
           // 4. Summarizing
           let progress = 85;
@@ -505,12 +541,29 @@ export async function POST(request: NextRequest) {
 
           send({ stage: 'error', error: errorMessage });
           controller.close();
+        } finally {
+          // Cleanup temp directory
+          if (tempDir) {
+            try {
+              await rmAsync(tempDir, { recursive: true, force: true });
+              console.log('Cleaned up temp dir:', tempDir);
+            } catch (cleanupErr) {
+              console.error('Cleanup error:', cleanupErr);
+            }
+          }
         }
       }
     });
 
     return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
   } catch (e) {
+    // Top-level error (e.g. JSON parse failed)
+    // Attempt cleanup if tempDir was created
+    if (tempDir) {
+      try {
+        await rmAsync(tempDir, { recursive: true, force: true });
+      } catch (cleanupErr) { }
+    }
     return NextResponse.json({ error: 'Server Error' }, { status: 500 });
   }
 }
