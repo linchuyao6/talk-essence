@@ -70,6 +70,17 @@ export default function ApiKeyModal({ onKeySet }: ApiKeyModalProps) {
                     }
                 `}</style>
 
+                {/* Close Button (Visible if closing is allowed/makes sense) */}
+                <button
+                    onClick={() => setIsOpen(false)}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-[var(--color-amy-primary)] transition-colors p-2 rounded-full hover:bg-stone-100"
+                    aria-label="Close"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h2 className="text-3xl font-serif text-[var(--color-amy-text)] mb-2">
