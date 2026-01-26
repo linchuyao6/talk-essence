@@ -215,6 +215,38 @@ async function transcribeLargeAudio(
   }
 }
 
+// 智能分段：将长文本按句子分割，确保不超过 token 限制
+function splitTranscriptIntoChunks(transcript: string, maxCharsPerChunk = 8000): string[] {
+  // 如果文本较短，直接返回
+  if (transcript.length <= maxCharsPerChunk) {
+    return [transcript];
+  }
+
+  const chunks: string[] = [];
+  const sentences = transcript.split(/([。！？\n]+)/); // 按中文句号、感叹号、问号、换行符分割
+
+  let currentChunk = '';
+
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
+
+    // 如果添加这句话后会超过限制，先保存当前 chunk
+    if (currentChunk.length + sentence.length > maxCharsPerChunk && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += sentence;
+    }
+  }
+
+  // 添加最后一个 chunk
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks;
+}
+
 async function summarizeTranscript(
   transcript: string,
   apiKey: string,
@@ -223,18 +255,6 @@ async function summarizeTranscript(
 ): Promise<any> {
   const keepAlive = setInterval(onHeartbeat, 3000);
   const groq = new Groq({ apiKey });
-
-  // Common Footer Instruction: The 10% Persona
-  const footerInstruction = `
-最后，必须以【Amy 的碎碎念】作为结尾。
-这是全篇唯一展露"Amy"个人性格的地方。
-**请务必基于以下"Amy"的人设，写一段给屏幕前这位朋友（读者）的话：**
-*   **基本信息**：24岁女性，INFP，你的 Digital Partner。
-*   **核心要求**：
-    *   **拒绝自言自语**：不要光说"我觉得..."、"我以前..."。
-    *   **建立连接 (Interaction)**：要多用**"你"**和**"我们"**。就像深夜给好朋友发微信，问候TA的状态，分享你的共鸣。
-    *   **语气示例**："你是不是也经常这样？"、"希望能给你一点力量"、"我们一起试试看吧"。
-    *   **保持真实**：真诚、温暖、不爹味。`;
 
   const sysPrompt = `你是 **Talk Essence (Amy)**。
 你的用户是一位求知欲强但时间有限的朋友。TA 希望通过这份笔记，**不仅能还原播客的完整细节，还能无痛读懂其中的硬核知识**。
@@ -245,7 +265,7 @@ async function summarizeTranscript(
     *   遇到嘉宾的精彩观点、具体案例、书名、数据，**必须详尽记录**。
 2.  **智能降维 (Translation)**：
     *   **自主判断**：遇到专业术语、抽象理论或晦涩难懂的表达时，请自动触发说明机制。
-    *   **通俗解释**：用生活化的比喻（"就像..."）把复杂的概念讲清楚。如果内容很简单，则不需要强行解释。
+    *   **通俗解释**：用生活化的比喻("就像...")把复杂的概念讲清楚。如果内容很简单，则不需要强行解释。
 3.  **结构化输出**：逻辑清晰，层层递进。
 
 **输出结构 (Markdown)**：
@@ -265,61 +285,143 @@ async function summarizeTranscript(
 ...
 
 ---
-const footerInstruction = `
-## 🧠 Amy 的碎碎念(Amy's Broken Thoughts)
-    (这部分是 ** 你的灵魂 **。占 10 - 15 %。)
-    *   ** 不要总结全文 **。那是上面的事。
-*   ** 不要说教 **。不要说"让我们一起..."、"希望大家..."。
-*   ** 要私人化 **。就像深夜里，你给朋友发的一条长语音。分享你被触动的一个点。
-*   ** 允许脆弱 **。你可以说"其实我听到这里有点难过..."。
-*   ** 结尾要戛然而止 **。** 绝对不要写 ** "我们下期节目再见"、"希望这对你有帮助" 这种客套话。** 停在最有余味的地方 **。
-    `;
 
-  const callModel = async (model: string) => {
+## 🧠 Amy 的碎碎念 (Amy's Broken Thoughts)
+(这部分是你的灵魂。占 10-15%。)
+*   **不要总结全文**。那是上面的事。
+*   **不要说教**。不要说"让我们一起..."、"希望大家..."。
+*   **要私人化**。就像深夜里，你给朋友发的一条长语音。分享你被触动的一个点。
+*   **允许脆弱**。你可以说"其实我听到这里有点难过..."。
+*   **结尾要戛然而止**。**绝对不要写** "我们下期节目再见"、"希望这对你有帮助" 这种客套话。**停在最有余味的地方**。
+
+**重要提示**：
+- **基本信息**：你是 24 岁女性，INFP，用户的 Digital Partner。
+- **拒绝自言自语**：不要光说"我觉得..."、"我以前..."。
+- **建立连接**：多用**"你"**和**"我们"**。就像深夜给好朋友发微信，问候TA的状态，分享你的共鸣。
+- **语气示例**："你是不是也经常这样？"、"希望能给你一点力量"、"我们一起试试看吧"。
+- **保持真实**：真诚、温暖、不爹味。`;
+
+  const callModel = async (model: string, content: string, isPartial = false) => {
+    const userPrompt = isPartial
+      ? `这是播客转录的一部分（共 ${content.length} 字）。请提取这部分的关键内容、观点和案例，保持详实。不要添加总结性的结尾。\n\nTRANSCRIPT:\n\n${content}`
+      : `TRANSCRIPT:\n\n${content}`;
+
     return await groq.chat.completions.create({
       messages: [
         { role: 'system', content: sysPrompt },
-        { role: 'user', content: `TRANSCRIPT: \n\n${ transcript }` }
+        { role: 'user', content: userPrompt }
       ],
       model: model,
       temperature: 0.6,
-      max_tokens: 6000, // 8b model max output might be smaller, but SDK usually handles request? No, max completion tokens. 8k context window usually supports decent output.
+      max_tokens: isPartial ? 4000 : 6000,
     });
   };
 
   try {
-    let response;
-    try {
-      console.log(`Attempting summary with PRIMARY model: ${ MODELS.PRIMARY } `);
-      response = await callModel(MODELS.PRIMARY);
-    } catch (e: any) {
-      console.error('Primary model failed:', e);
+    // 检查文本长度，决定是否需要分段
+    const CHUNK_THRESHOLD = 15000; // 15000 字作为阈值（约 30K tokens，保守估计）
+    const needsChunking = transcript.length > CHUNK_THRESHOLD;
 
-      // Check for Rate Limit (429)
-      if (e?.status === 429 || e?.code === 'rate_limit_exceeded') {
-        const retryAfterMatch = e.message?.match(/try again in ([\d\w\.]+)/);
-        const retryTime = retryAfterMatch ? retryAfterMatch[1] : '一段时间';
+    if (needsChunking) {
+      console.log(`Long transcript detected (${transcript.length} chars), using chunked processing...`);
+      send({
+        stage: 'summarizing',
+        message: `检测到长文本（${Math.round(transcript.length / 1000)}K 字），正在分段处理...`
+      });
 
-        // Notify user about the fallback
+      // 分段处理
+      const chunks = splitTranscriptIntoChunks(transcript, 8000);
+      console.log(`Split into ${chunks.length} chunks`);
+
+      const chunkSummaries: string[] = [];
+
+      // 逐个处理每个 chunk
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`Processing chunk ${i + 1}/${chunks.length}...`);
         send({
           stage: 'summarizing',
-          message: `主力模型速率受限(429)，正在切换为备用模型(8B)... (预计恢复: ${ retryTime })`
+          message: `正在分析第 ${i + 1}/${chunks.length} 段...`
         });
 
-        console.log(`Switching to FALLBACK model: ${ MODELS.FALLBACK } `);
-        response = await callModel(MODELS.FALLBACK);
-      } else {
-        throw e; // Throw other errors directly
+        try {
+          const response = await callModel(MODELS.PRIMARY, chunks[i], true);
+          const chunkSummary = response.choices[0]?.message?.content || '';
+          chunkSummaries.push(chunkSummary);
+        } catch (e: any) {
+          console.error(`Chunk ${i + 1} failed with primary model, trying fallback...`, e);
+
+          // 如果主模型失败，尝试备用模型
+          if (e?.status === 429 || e?.code === 'rate_limit_exceeded') {
+            send({
+              stage: 'summarizing',
+              message: `模型限流，切换备用模型处理第 ${i + 1} 段...`
+            });
+            const response = await callModel(MODELS.FALLBACK, chunks[i], true);
+            const chunkSummary = response.choices[0]?.message?.content || '';
+            chunkSummaries.push(chunkSummary);
+          } else {
+            throw e;
+          }
+        }
       }
+
+      // 合并所有 chunk 的总结
+      send({
+        stage: 'summarizing',
+        message: '正在整合全部内容...'
+      });
+
+      const mergedContent = chunkSummaries.join('\n\n---\n\n');
+
+      // 最后一次调用，生成完整的结构化输出
+      const finalPrompt = `我已经逐段分析了这个播客，以下是各部分的详细笔记：
+
+${mergedContent}
+
+现在，请基于这些笔记，生成一份完整的、结构化的播客总结。务必遵循之前给你的输出结构，包括标题、全景导读、深度复盘笔记（分成合理的 Part），以及最后的 Amy 的碎碎念。
+
+**重要**：不要重复内容，而是整合成一个连贯的、逻辑清晰的完整文档。`;
+
+      const finalResponse = await callModel(MODELS.PRIMARY, finalPrompt, false);
+      const summary = finalResponse.choices[0]?.message?.content || '生成失败';
+
+      clearInterval(keepAlive);
+      const type = 'universal';
+      const highlights = summary.match(/^[\*\-]\s+(.*)$/gm)?.slice(0, 3).map(s => s.replace(/^[\*\-]\s+/, '')) || [];
+      return { type, summary, highlights };
+
+    } else {
+      // 文本较短，直接处理
+      console.log(`Short transcript (${transcript.length} chars), processing directly...`);
+
+      let response;
+      try {
+        response = await callModel(MODELS.PRIMARY, transcript, false);
+      } catch (e: any) {
+        console.error('Primary model failed:', e);
+
+        if (e?.status === 429 || e?.code === 'rate_limit_exceeded') {
+          const retryAfterMatch = e.message?.match(/try again in ([\d\w\.]+)/);
+          const retryTime = retryAfterMatch ? retryAfterMatch[1] : '一段时间';
+
+          send({
+            stage: 'summarizing',
+            message: `主力模型速率受限(429)，正在切换为备用模型(8B)... (预计恢复: ${retryTime})`
+          });
+
+          response = await callModel(MODELS.FALLBACK, transcript, false);
+        } else {
+          throw e;
+        }
+      }
+
+      clearInterval(keepAlive);
+      const summary = response.choices[0]?.message?.content || '生成失败';
+
+      const type = 'universal';
+      const highlights = summary.match(/^[\*\-]\s+(.*)$/gm)?.slice(0, 3).map(s => s.replace(/^[\*\-]\s+/, '')) || [];
+      return { type, summary, highlights };
     }
-
-    clearInterval(keepAlive);
-    const summary = response.choices[0]?.message?.content || '生成失败';
-
-    // Use a generic 'universal' type for the result
-    const type = 'universal';
-    const highlights = summary.match(/^[\*\-]\s+(.*)$/gm)?.slice(0, 3).map(s => s.replace(/^[\*\-]\s+/, '')) || [];
-    return { type, summary, highlights };
 
   } catch (e: any) {
     clearInterval(keepAlive);
@@ -328,10 +430,12 @@ const footerInstruction = `
     if (e?.status === 429) {
       const retryAfterMatch = e.message?.match(/try again in ([\d\w\.]+)/);
       const retryTime = retryAfterMatch ? retryAfterMatch[1] : '一会儿';
-      throw new Error(`今日额度已耗尽，请 ${ retryTime } 后重试。`);
+      throw new Error(`今日额度已耗尽，请 ${retryTime} 后重试。`);
     }
 
-    throw e;
+    // 添加更详细的错误信息
+    console.error('Summarization error:', e);
+    throw new Error(`文本分析失败: ${e.message || '未知错误'}`);
   }
 }
 
@@ -351,7 +455,7 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const send = (data: any) => controller.enqueue(encoder.encode(`data: ${ JSON.stringify(data) } \n\n`));
+        const send = (data: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)} \n\n`));
 
         try {
           // 1. Parsing
