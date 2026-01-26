@@ -488,6 +488,9 @@ export async function POST(request: NextRequest) {
           send({ stage: 'parsing', progress: 5 });
           const { audioUrl, title } = await parseXiaoyuzhouUrl(url);
 
+          // Emit Metadata immediately
+          send({ stage: 'parsing', data: { title, audioUrl } });
+
           // 2. Downloading (Stream to file)
           send({ stage: 'downloading', progress: 10 });
           const initialTempPath = path.join(tempDir, 'download_audio_temp');
@@ -513,6 +516,9 @@ export async function POST(request: NextRequest) {
             }
           );
 
+          // Emit Transcript immediately
+          send({ stage: 'transcribing', data: { transcript } });
+
           // 4. Summarizing
           let progress = 85;
           send({ stage: 'summarizing', progress });
@@ -523,7 +529,7 @@ export async function POST(request: NextRequest) {
           }, send); // Pass send function
 
           // 5. Done
-          send({ stage: 'done', progress: 100, data: { title, transcript, audioUrl, ...result } });
+          send({ stage: 'done', progress: 100, data: { ...result } });
           controller.close();
         } catch (e: any) {
           console.error('Stream error:', e);

@@ -35,6 +35,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -57,7 +58,6 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        // 尝试解析错误信息
         let errorMessage = '连接服务器失败';
         try {
           const errorData = await response.json();
@@ -78,7 +78,6 @@ export default function Home() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // 处理可能粘包的情况
         const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
 
         for (const line of lines) {
@@ -86,7 +85,6 @@ export default function Home() {
           try {
             data = JSON.parse(line.replace('data: ', ''));
           } catch (e) {
-            // Ignore parse errors for incomplete chunks
             continue;
           }
 
@@ -97,7 +95,14 @@ export default function Home() {
           if (data.stage) setStage(data.stage);
           if (data.message) setMessage(data.message);
           if (data.progress !== undefined) setProgress(data.progress);
-          if (data.data) setResult(data.data);
+
+          // Incremental State Merging
+          if (data.data) {
+            setResult(prev => {
+              // Merge previous state with new data
+              return { ...(prev || {} as Result), ...data.data };
+            });
+          }
         }
       }
 
@@ -125,7 +130,28 @@ export default function Home() {
       <ApiKeyModal onKeySet={setApiKey} />
 
       {/* Header Section */}
-      <header className="mb-24 text-center animate-[fadeUp_1s_ease-out]">
+      <header className="mb-24 text-center animate-[fadeUp_1s_ease-out] relative">
+        <div className="absolute right-0 top-0">
+          <button
+            onClick={() => {
+              // Simple hack to trigger modal: clear local storage and reload, 
+              // OR better: pass a signal to modal. 
+              // For now, let's just clear and let the user know, or update ApiKeyModal next.
+              // I will implement a proper "forceOpen" prop in ApiKeyModal next.
+              const event = new CustomEvent('open-api-key-modal');
+              window.dispatchEvent(event);
+            }}
+            className="text-xs text-[var(--color-amy-text-lighter)] hover:text-[var(--color-amy-primary)] transition-colors flex items-center gap-1"
+            title="更换 API Key"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span>设置 Key</span>
+          </button>
+        </div>
+
         <div className="inline-block mb-4 px-4 py-1 rounded-full border border-[var(--color-amy-secondary)] text-[var(--color-amy-primary)] text-xs tracking-[0.2em] font-medium uppercase bg-white/50 backdrop-blur-sm">
           Amy · Your Digital Partner
         </div>
@@ -183,12 +209,12 @@ export default function Home() {
         </div>
       )}
 
-      {/* Result Display */}
-      {result && (
+      {/* Result Display (Incremental) */}
+      {(result?.title || result?.audioUrl || result?.transcript) && (
         <div className="animate-[fadeUp_0.8s_ease-out] space-y-16">
 
-          {/* Main Content Card */}
-          <article className="bg-white rounded-2xl shadow-[var(--shadow-elevated)] border border-stone-100 overflow-hidden relative">
+          {/* Main Content Card / Loading Skeleton */}
+          <article className="bg-white rounded-2xl shadow-[var(--shadow-elevated)] border border-stone-100 overflow-hidden relative min-h-[400px]">
 
             {/* Top Decoration */}
             <div className="h-2 w-full bg-[#E8DCCA]" />
@@ -197,44 +223,52 @@ export default function Home() {
               {/* Meta Info */}
               <div className="flex flex-col items-center mb-12 text-center">
                 <h2 className="text-3xl md:text-5xl font-serif text-[var(--color-amy-text)] leading-tight mb-8">
-                  {result.title}
+                  {result.title || '正在解析标题...'}
                 </h2>
-                {/* Action Buttons */}
-                <div className="flex items-center justify-center gap-6 mt-4">
-                  <button
-                    onClick={() => copyToClipboard(result.summary)}
-                    className="group flex items-center gap-2 text-xs font-medium text-[var(--color-amy-text-light)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors"
-                  >
-                    <span>复制完整笔记</span>
-                  </button>
 
-                  <span className="text-[var(--color-amy-text-lighter)] opacity-50">|</span>
+                {/* Result Actions - Only show when summary is ready */}
+                {result.summary && (
+                  <div className="flex items-center justify-center gap-6 mt-4 animate-[fadeIn_0.5s]">
+                    <button
+                      onClick={() => copyToClipboard(result.summary)}
+                      className="group flex items-center gap-2 text-xs font-medium text-[var(--color-amy-text-light)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors"
+                    >
+                      <span>复制完整笔记</span>
+                    </button>
+                    <span className="text-[var(--color-amy-text-lighter)] opacity-50">|</span>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([result.summary], { type: 'text/markdown' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `${result.title}.md`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="group flex items-center gap-2 text-xs font-medium text-[var(--color-amy-text-light)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors"
+                    >
+                      <span>下载 Markdown</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
-                  <button
-                    onClick={() => {
-                      const blob = new Blob([result.summary], { type: 'text/markdown' });
-                      const url = URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = `${result.title}.md`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="group flex items-center gap-2 text-xs font-medium text-[var(--color-amy-text-light)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors"
-                  >
-                    <span>下载 Markdown</span>
-                  </button>
+              {/* The Essence (Markdown) or Loading State */}
+              {result.summary ? (
+                <div className="prose prose-stone prose-lg max-w-none prose-headings:font-serif prose-p:text-[var(--color-amy-text-light)] prose-p:leading-loose animate-[fadeIn_0.8s]">
+                  <ReactMarkdown>
+                    {result.summary}
+                  </ReactMarkdown>
                 </div>
-              </div>
-
-              {/* The Essence (Markdown) */}
-              <div className="prose prose-stone prose-lg max-w-none prose-headings:font-serif prose-p:text-[var(--color-amy-text-light)] prose-p:leading-loose">
-                <ReactMarkdown>
-                  {result.summary}
-                </ReactMarkdown>
-              </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 space-y-6 opacity-60">
+                  {/* Elegant Loading Animation */}
+                  <div className="w-12 h-12 border-2 border-[var(--color-amy-border)] border-t-[var(--color-amy-primary)] rounded-full animate-spin" />
+                  <p className="font-serif italic text-[var(--color-amy-text-light)]">正在深度思考与提炼...</p>
+                </div>
+              )}
             </div>
 
             {/* Paper Texture Overlay (Subtle) */}
@@ -243,57 +277,63 @@ export default function Home() {
           </article>
 
 
-          {/* Resource Toolbox (New Module) */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Download Audio Button */}
-            {result.audioUrl && (
-              <a
-                href={`/api/proxy-download?url=${encodeURIComponent(result.audioUrl)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group"
-              >
-                <div className="w-10 h-10 rounded-full bg-[#E8DCCA]/30 flex items-center justify-center text-[var(--color-amy-primary)] group-hover:bg-[#E8DCCA] transition-colors">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">下载原声音频</p>
-                  <p className="text-xs text-[var(--color-amy-text-lighter)]">保存 MP3 至本地</p>
-                </div>
-              </a>
-            )}
+          {/* Resource Toolbox (Incremental) */}
+          {(result.audioUrl || result.transcript) && (
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-[fadeUp_0.5s_ease-out_0.2s_both]">
+              {/* Download Audio Button */}
+              {result.audioUrl && (
+                <a
+                  href={`/api/proxy-download?url=${encodeURIComponent(result.audioUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#E8DCCA]/30 flex items-center justify-center text-[var(--color-amy-primary)] group-hover:bg-[#E8DCCA] transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">下载原声音频</p>
+                    <p className="text-xs text-[var(--color-amy-text-lighter)]">保存 MP3 至本地</p>
+                  </div>
+                </a>
+              )}
 
-            {/* NotebookLM Link Button */}
-            <a
-              href="https://notebooklm.google.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group"
-            >
-              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">存入 NotebookLM</p>
-                <p className="text-xs text-[var(--color-amy-text-lighter)]">构建你的第二大脑</p>
-              </div>
-            </a>
-          </section>
+              {/* NotebookLM Link Button (Only if transcript ready) */}
+              {result.transcript && (
+                <a
+                  href="https://notebooklm.google.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group animate-[fadeIn_0.5s_ease-out]"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-100 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">存入 NotebookLM</p>
+                    <p className="text-xs text-[var(--color-amy-text-lighter)]">构建你的第二大脑</p>
+                  </div>
+                </a>
+              )}
+            </section>
+          )}
 
-          {/* Transcript Section */}
-          <details className="group">
-            <summary className="list-none flex flex-col items-center gap-2 cursor-pointer opacity-50 hover:opacity-100 transition-opacity">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-amy-primary)]">AI 识别原文稿 (Raw)</span>
-              <div className="w-1 h-1 rounded-full bg-[var(--color-amy-primary)]" />
-            </summary>
-            <div className="mt-8 p-8 bg-white/50 border border-[var(--color-amy-border)] rounded-2xl text-sm font-light leading-relaxed text-[var(--color-amy-text-light)] max-h-96 overflow-y-auto whitespace-pre-wrap shadow-inner">
-              {result.transcript}
-            </div>
-          </details>
+          {/* Transcript Section (Incremental) */}
+          {result.transcript && (
+            <details className="group animate-[fadeUp_0.5s_ease-out_0.3s_both]">
+              <summary className="list-none flex flex-col items-center gap-2 cursor-pointer opacity-50 hover:opacity-100 transition-opacity">
+                <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-amy-primary)]">AI 识别原文稿 (Raw)</span>
+                <div className="w-1 h-1 rounded-full bg-[var(--color-amy-primary)]" />
+              </summary>
+              <div className="mt-8 p-8 bg-white/50 border border-[var(--color-amy-border)] rounded-2xl text-sm font-light leading-relaxed text-[var(--color-amy-text-light)] max-h-96 overflow-y-auto whitespace-pre-wrap shadow-inner">
+                {result.transcript}
+              </div>
+            </details>
+          )}
 
         </div >
       )

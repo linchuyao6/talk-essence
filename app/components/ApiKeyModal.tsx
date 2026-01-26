@@ -23,6 +23,11 @@ export default function ApiKeyModal({ onKeySet }: ApiKeyModalProps) {
             const timer = setTimeout(() => setIsOpen(true), 500);
             return () => clearTimeout(timer);
         }
+
+        // Listen for open event from other components
+        const handleOpenEvent = () => setIsOpen(true);
+        window.addEventListener('open-api-key-modal', handleOpenEvent);
+        return () => window.removeEventListener('open-api-key-modal', handleOpenEvent);
     }, [onKeySet]);
 
     const handleSubmit = (e: React.FormEvent) => {
