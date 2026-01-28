@@ -300,8 +300,8 @@ export default function Home() {
                 </a>
               )}
 
-              {/* NotebookLM Link Button (Only if transcript ready) */}
-              {result.transcript && (
+              {/* NotebookLM Link Button (Early Access with Audio) */}
+              {result.audioUrl && (
                 <a
                   href="https://notebooklm.google.com/"
                   target="_blank"
@@ -329,8 +329,19 @@ export default function Home() {
                 <span className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-amy-primary)]">AI 识别原文稿 (Raw)</span>
                 <div className="w-1 h-1 rounded-full bg-[var(--color-amy-primary)]" />
               </summary>
-              <div className="mt-8 p-8 bg-white/50 border border-[var(--color-amy-border)] rounded-2xl text-sm font-light leading-relaxed text-[var(--color-amy-text-light)] max-h-96 overflow-y-auto whitespace-pre-wrap shadow-inner">
-                {result.transcript}
+              <div className="mt-8 relative">
+                <button
+                  onClick={() => copyToClipboard(result.transcript)}
+                  className="absolute top-4 right-4 text-xs font-medium text-[var(--color-amy-text-lighter)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors flex items-center gap-1 bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  复制原文稿
+                </button>
+                <div className="p-8 pt-14 bg-white/50 border border-[var(--color-amy-border)] rounded-2xl text-sm font-light leading-relaxed text-[var(--color-amy-text-light)] max-h-96 overflow-y-auto whitespace-pre-wrap shadow-inner">
+                  {result.transcript}
+                </div>
               </div>
             </details>
           )}
