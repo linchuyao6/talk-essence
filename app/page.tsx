@@ -34,6 +34,7 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [toast, setToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' });
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,9 +119,12 @@ export default function Home() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      alert('已复制笔记到剪贴板 ✨');
+      setToast({ show: true, message: '已复制笔记到剪贴板 ✨' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
     } catch (err) {
       console.error('Failed to copy', err);
+      setToast({ show: true, message: '复制失败，请重试' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
     }
   };
 
@@ -128,6 +132,13 @@ export default function Home() {
     <main className="min-h-screen py-20 px-6 sm:px-12 max-w-4xl mx-auto selection:bg-[var(--color-amy-secondary)] selection:text-[var(--color-amy-text)]">
 
       <ApiKeyModal onKeySet={setApiKey} />
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-[var(--color-amy-text)] text-[var(--color-amy-bg)] px-6 py-3 rounded-full shadow-lg text-sm font-medium z-50 animate-[fadeIn_0.3s_ease-out]">
+          {toast.message}
+        </div>
+      )}
 
       {/* Header Section */}
       <header className="mb-24 text-center animate-[fadeUp_1s_ease-out] relative">
