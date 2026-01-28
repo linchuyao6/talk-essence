@@ -138,7 +138,7 @@ export default function Home() {
 
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = `${filename || 'podcast'}.m4a`;
+      link.download = `${filename.replace(/[<>:"/\\|?*]+/g, '_') || 'podcast'}.m4a`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -150,6 +150,26 @@ export default function Home() {
       console.error('Download error:', err);
       window.open(url, '_blank');
       setToast({ show: true, message: '自动下载失败，已打开原链接' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    }
+  };
+
+  const downloadMarkdown = (content: string, title: string) => {
+    try {
+      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${title.replace(/[<>:"/\\|?*]+/g, '_') || 'summary'}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setToast({ show: true, message: 'Markdown 已下载 📝' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    } catch (err) {
+      console.error('Markdown download error:', err);
+      setToast({ show: true, message: '下载失败，请重试' });
       setTimeout(() => setToast({ show: false, message: '' }), 3000);
     }
   };
@@ -274,16 +294,7 @@ export default function Home() {
                     </button>
                     <span className="text-[var(--color-amy-text-lighter)] opacity-50">|</span>
                     <button
-                      onClick={() => {
-                        const blob = new Blob([result.summary], { type: 'text/markdown' });
-                        const url = URL.createObjectURL(blob);
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.download = `${result.title}.md`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
+                      onClick={() => downloadMarkdown(result.summary, result.title)}
                       className="group flex items-center gap-2 text-xs font-medium text-[var(--color-amy-text-light)] hover:text-[var(--color-amy-primary)] uppercase tracking-widest transition-colors"
                     >
                       <span>下载 Markdown</span>
@@ -316,7 +327,7 @@ export default function Home() {
 
           {/* Resource Toolbox (Incremental) */}
           {(result.audioUrl || result.transcript) && (
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-[fadeUp_0.5s_ease-out_0.2s_both]">
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-[fadeUp_0.5s_ease-out_0.2s_both]">
               {/* Download Audio Button */}
               {result.audioUrl && (
                 <button
@@ -331,6 +342,42 @@ export default function Home() {
                   <div className="text-left">
                     <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">下载原声音频</p>
                     <p className="text-xs text-[var(--color-amy-text-lighter)]">保存 MP3 至本地</p>
+                  </div>
+                </button>
+              )}
+
+              {/* Copy Transcript Button */}
+              {result.transcript && (
+                <button
+                  onClick={() => copyToClipboard(result.transcript)}
+                  className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group animate-[fadeIn_0.5s_ease-out_0.1s_both]"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">复制原文</p>
+                    <p className="text-xs text-[var(--color-amy-text-lighter)]">粘贴至 NotebookLM</p>
+                  </div>
+                </button>
+              )}
+
+              {/* Copy Transcript Button */}
+              {result.transcript && (
+                <button
+                  onClick={() => copyToClipboard(result.transcript)}
+                  className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group animate-[fadeIn_0.5s_ease-out_0.1s_both]"
+                >
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">复制原文</p>
+                    <p className="text-xs text-[var(--color-amy-text-lighter)]">粘贴至 NotebookLM</p>
                   </div>
                 </button>
               )}
