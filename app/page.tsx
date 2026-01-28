@@ -128,6 +128,32 @@ export default function Home() {
     }
   };
 
+  const downloadAudio = async (url: string, filename: string) => {
+    try {
+      setToast({ show: true, message: '正在准备下载音频...' });
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Network response was not ok');
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${filename || 'podcast'}.m4a`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      setToast({ show: true, message: '下载已开始 🎧' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    } catch (err) {
+      console.error('Download error:', err);
+      window.open(url, '_blank');
+      setToast({ show: true, message: '自动下载失败，已打开原链接' });
+      setTimeout(() => setToast({ show: false, message: '' }), 3000);
+    }
+  };
+
   return (
     <main className="min-h-screen py-20 px-6 sm:px-12 max-w-4xl mx-auto selection:bg-[var(--color-amy-secondary)] selection:text-[var(--color-amy-text)]">
 
@@ -293,10 +319,8 @@ export default function Home() {
             <section className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-[fadeUp_0.5s_ease-out_0.2s_both]">
               {/* Download Audio Button */}
               {result.audioUrl && (
-                <a
-                  href={`/api/proxy-download?url=${encodeURIComponent(result.audioUrl)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => downloadAudio(result.audioUrl!, result.title)}
                   className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group"
                 >
                   <div className="w-10 h-10 rounded-full bg-[#E8DCCA]/30 flex items-center justify-center text-[var(--color-amy-primary)] group-hover:bg-[#E8DCCA] transition-colors">
@@ -308,7 +332,7 @@ export default function Home() {
                     <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">下载原声音频</p>
                     <p className="text-xs text-[var(--color-amy-text-lighter)]">保存 MP3 至本地</p>
                   </div>
-                </a>
+                </button>
               )}
 
               {/* NotebookLM Link Button (Early Access with Audio) */}
