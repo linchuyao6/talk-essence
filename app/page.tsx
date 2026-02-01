@@ -128,26 +128,28 @@ export default function Home() {
     }
   };
 
-  const downloadAudio = async (url: string, filename: string) => {
+  const downloadAudio = (url: string, filename: string) => {
     try {
-      setToast({ show: true, message: '正在准备下载音频...' });
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Network response was not ok');
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
+      setToast({ show: true, message: '正在转码并下载 MP3...' });
+
+      // Use our new proxy API to convert and download as MP3
+      const proxyUrl = `/api/proxy-audio?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
 
       const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `${filename.replace(/[<>:"/\\|?*]+/g, '_') || 'podcast'}.m4a`;
+      link.href = proxyUrl;
+      // The Content-Disposition header in the API will handle the filename, but we set it here for good measure
+      link.download = `${filename.replace(/[<>:"/\\|?*]+/g, '_') || 'podcast'}.mp3`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
 
-      setToast({ show: true, message: '下载已开始 🎧' });
-      setTimeout(() => setToast({ show: false, message: '' }), 3000);
+      // Since we can't track the progress of a direct browser download easily without more complex code,
+      // we just show a starting message.
+      setTimeout(() => setToast({ show: true, message: '下载已开始，请留意浏览器下载栏 🎧' }), 1000);
+      setTimeout(() => setToast({ show: false, message: '' }), 4000);
     } catch (err) {
       console.error('Download error:', err);
+      // Fallback to opening original URL if something fails (though logic above is unlikely to throw synchronously)
       window.open(url, '_blank');
       setToast({ show: true, message: '自动下载失败，已打开原链接' });
       setTimeout(() => setToast({ show: false, message: '' }), 3000);
@@ -191,10 +193,8 @@ export default function Home() {
         <div className="absolute right-0 top-0">
           <button
             onClick={() => {
-              // Simple hack to trigger modal: clear local storage and reload, 
-              // OR better: pass a signal to modal. 
-              // For now, let's just clear and let the user know, or update ApiKeyModal next.
-              // I will implement a proper "forceOpen" prop in ApiKeyModal next.
+              // Dispatch a custom event to open the API Key Modal
+              // The ApiKeyModal component listens for this event globally
               const event = new CustomEvent('open-api-key-modal');
               window.dispatchEvent(event);
             }}
@@ -342,24 +342,6 @@ export default function Home() {
                   <div className="text-left">
                     <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">下载原声音频</p>
                     <p className="text-xs text-[var(--color-amy-text-lighter)]">保存 MP3 至本地</p>
-                  </div>
-                </button>
-              )}
-
-              {/* Copy Transcript Button */}
-              {result.transcript && (
-                <button
-                  onClick={() => copyToClipboard(result.transcript)}
-                  className="flex items-center justify-center gap-3 p-6 rounded-xl bg-white border border-[var(--color-amy-border)] hover:border-[var(--color-amy-primary)] hover:shadow-md transition-all group animate-[fadeIn_0.5s_ease-out_0.1s_both]"
-                >
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-100 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <p className="font-serif text-[var(--color-amy-text)] text-lg leading-tight">复制原文</p>
-                    <p className="text-xs text-[var(--color-amy-text-lighter)]">粘贴至 NotebookLM</p>
                   </div>
                 </button>
               )}

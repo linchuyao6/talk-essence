@@ -63,7 +63,4 @@ docker run -p 3000:3000 -e GROQ_API_KEY=your_key talk-essence
 
 MIT License
 
----
-<p align="center">
-  <span style="opacity: 0.6">Created with ♡ by Amy based on Next.js 15</span>
-</p>
+

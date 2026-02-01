@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { load } from 'cheerio';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
@@ -29,20 +29,36 @@ export const runtime = 'nodejs';
 
 async function parseXiaoyuzhouUrl(url: string): Promise<{ audioUrl: string; title: string }> {
   try {
-    const response = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-      timeout: 10000 // 10s timeout to prevent hanging
+    console.log(`[Parser] Fetching URL: ${url}`);
+
+    // Switch to native fetch which handles headers and environment better in Next.js
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      },
+      // signal: AbortSignal.timeout(15000) // Node 18+ support
     });
-    const $ = cheerio.load(response.data);
+
+    if (!response.ok) {
+      throw new Error(`小宇宙页面访问失败: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    console.log(`[Parser] Response received, length: ${html.length}`);
+
+    const $ = load(html);
+
     const audioUrl = $('audio source').attr('src') || $('meta[property="og:audio"]').attr('content') || '';
     const title = $('h1').first().text().trim() || $('meta[property="og:title"]').attr('content') || 'Unknown Podcast';
+
+    console.log(`[Parser] Found audio: ${audioUrl ? 'Yes' : 'No'}, Title: ${title}`);
+
     if (!audioUrl) throw new Error('无法找到音频链接 (可能非单集页面)');
     return { audioUrl, title };
   } catch (error) {
-    console.error('Parsing failed:', error instanceof Error ? error.message : String(error));
-    if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
-      throw new Error('连接小宇宙超时，请检查网络或链接');
-    }
+    console.error('[Parser] Failed:', error instanceof Error ? error.message : String(error));
     throw new Error('解析链接失败，请确认链接是否有效');
   }
 }
@@ -477,6 +493,9 @@ export async function POST(request: NextRequest) {
         const send = (data: any) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)} \n\n`));
 
         try {
+          // Send immediate connection confirmation
+          send({ stage: 'parsing', message: '已连接，开始解析...' });
+
           // Prepare temp directory
           const sessionId = uuidv4();
           tempDir = path.join(os.tmpdir(), `amy-podcast-${sessionId}`);
@@ -561,7 +580,14 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no' // Prevent Nginx/Vercel buffering
+      }
+    });
   } catch (e) {
     // Top-level error (e.g. JSON parse failed)
     // Attempt cleanup if tempDir was created
