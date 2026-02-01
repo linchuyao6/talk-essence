@@ -12,13 +12,16 @@ export default function ApiKeyModal({ onKeySet }: ApiKeyModalProps) {
     const [error, setError] = useState('');
     const [showTutorial, setShowTutorial] = useState(false);
     const [isShaking, setIsShaking] = useState(false);
+    const [hasStoredKey, setHasStoredKey] = useState(false); // 追踪是否已有存储的 Key
 
     useEffect(() => {
         // Check if key exists in local storage
         const storedKey = localStorage.getItem('groq_api_key');
         if (storedKey) {
             onKeySet(storedKey);
+            setHasStoredKey(true); // 标记已有 Key
         } else {
+            setHasStoredKey(false);
             // Small delay for smooth entrance animation
             const timer = setTimeout(() => setIsOpen(true), 500);
             return () => clearTimeout(timer);
@@ -37,6 +40,7 @@ export default function ApiKeyModal({ onKeySet }: ApiKeyModalProps) {
         if (apiKey.trim().startsWith('gsk_')) { // Groq keys usually start with gsk_
             localStorage.setItem('groq_api_key', apiKey.trim());
             onKeySet(apiKey.trim());
+            setHasStoredKey(true); // 更新状态：现在已有存储的 Key
             setIsOpen(false);
         } else {
             setError('Key 格式似乎不正确，请检查是否以 "gsk_" 开头');
@@ -70,16 +74,18 @@ export default function ApiKeyModal({ onKeySet }: ApiKeyModalProps) {
                     }
                 `}</style>
 
-                {/* Close Button (Visible if closing is allowed/makes sense) */}
-                <button
-                    onClick={() => setIsOpen(false)}
-                    className="absolute top-4 right-4 text-gray-400 hover:text-[var(--color-amy-primary)] transition-colors p-2 rounded-full hover:bg-stone-100"
-                    aria-label="Close"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                {/* Close Button - 只有当用户已存储有效 Key 时才显示 */}
+                {hasStoredKey && (
+                    <button
+                        onClick={() => setIsOpen(false)}
+                        className="absolute top-4 right-4 text-gray-400 hover:text-[var(--color-amy-primary)] transition-colors p-2 rounded-full hover:bg-stone-100"
+                        aria-label="Close"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                )}
 
                 {/* Header */}
                 <div className="text-center mb-8">
